@@ -138,7 +138,8 @@ function updateNow() {
   if ('mediaSession' in navigator && s) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: s.name, artist: 'Noir Radio', album: s.src,
-      artwork: s.art ? [{ src: s.art, sizes: '120x120', type: 'image/png' }] : [],
+      // своя обложка с того же домена: чужие картинки iOS часто не показывает
+      artwork: [{ src: new URL('cover.png', location.href).href, sizes: '512x512', type: 'image/png' }],
     });
   }
 }
@@ -188,6 +189,10 @@ if ('mediaSession' in navigator) {
   ms.setActionHandler('pause', () => audio.pause());
   ms.setActionHandler('nexttrack',     () => tune(current + 1));
   ms.setActionHandler('previoustrack', () => tune(current - 1));
+  // без этого iOS рисует перемотку ±10 сек вместо ⏮ ⏭ — для живого радио она не нужна
+  try { ms.setActionHandler('seekbackward', null); } catch (e) {}
+  try { ms.setActionHandler('seekforward', null); } catch (e) {}
+  try { ms.setActionHandler('seekto', null); } catch (e) {}
   log('Media Session: есть');
 } else log('Media Session: нет');
 
