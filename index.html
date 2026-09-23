@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0b">
+<title>Noir Radio — spike</title>
+<style>
+  :root { --bg:#0b0b0b; --fg:#efe6d2; --dim:#8a8274; --red:#b3121b; --line:#262320; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.4 -apple-system, system-ui, sans-serif;
+         padding:16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  h1 { font-size:18px; margin:0 0 12px; letter-spacing:.08em; text-transform:uppercase; }
+  #now { border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+  #now .name { font-size:20px; font-weight:600; }
+  #now .meta { color:var(--dim); font-size:13px; margin-top:2px; }
+  #status { margin-top:8px; font-size:13px; }
+  .row { display:flex; gap:8px; margin-bottom:16px; }
+  button { font:inherit; color:var(--fg); background:#1a1816; border:1px solid var(--line);
+           border-radius:10px; padding:12px 14px; flex:1; }
+  #play { background:var(--red); border-color:var(--red); font-weight:600; flex:2; }
+  h2 { font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.1em; margin:18px 0 6px; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { padding:10px 4px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:8px; }
+  li.active { color:#fff; }
+  li.active .t::before { content:"▶ "; color:var(--red); }
+  li .s { color:var(--dim); font-size:12px; white-space:nowrap; }
+  #log { margin-top:20px; font:11px/1.4 ui-monospace, Menlo, monospace; color:var(--dim);
+         white-space:pre-wrap; max-height:200px; overflow:auto; border-top:1px solid var(--line); padding-top:8px; }
+</style>
+</head>
+<body>
+<h1>Noir Radio · spike</h1>
+
+<div id="now">
+  <div class="name" id="nowName">Станция не выбрана</div>
+  <div class="meta" id="nowMeta">Нажми «Играть»</div>
+  <div id="status">—</div>
+</div>
+
+<div class="row">
+  <button id="prev">⏮</button>
+  <button id="play">▶ Играть</button>
+  <button id="next">⏭</button>
+</div>
+
+<h2>SomaFM</h2>
+<ul id="soma"></ul>
+<h2>Radio Browser · jazz / lounge</h2>
+<ul id="rb"><li><span class="t">Загрузка…</span></li></ul>
+
+<div id="log"></div>
+
+<audio id="audio" preload="none" playsinline></audio>
+
+<script>
+const audio = document.getElementById('audio');
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
+}
+function setStatus(s) { $('status').textContent = s; }
+
+// --- SomaFM: захардкожены, стримы по https с запасными зеркалами ---
+const SOMA = [
+  { id:'secretagent',   name:'Secret Agent',         meta:'шпионский лаунж, нуар' },
+  { id:'illstreet',     name:'Illinois Street Lounge', meta:'винтажный лаунж 50–60-х' },
+  { id:'sonicuniverse', name:'Sonic Universe',       meta:'современный джаз' },
+  { id:'bossa',         name:'Bossa Beyond',         meta:'босса-нова' },
+].map(s => ({
+  ...s, src:'SomaFM',
+  urls: ['ice1','ice2','ice4','ice6'].map(h => `https://${h}.somafm.com/${s.id}-128-mp3`),
+  art: `https://somafm.com/img/${s.id}120.png`,
+}));
+
+let stations = [...SOMA];
+let current = -1;
+let mirrorIdx = 0;
+
+// --- Radio Browser: публичный API с CORS, пробуем несколько зеркал ---
+const RB_HOSTS = ['de1','de2','fi1','nl1'].map(h => `https://${h}.api.radio-browser.info`);
+async function rbFetch(path) {
+  for (const host of RB_HOSTS) {
+    try {
+      const r = await fetch(host + path);
+      if (r.ok) { log(`RB ok: ${host}`); return { host, data: await r.json() }; }
+    } catch (e) { log(`RB fail: ${host} — ${e.message}`); }
+  }
+  throw new Error('все зеркала Radio Browser недоступны');
+}
+let rbHost = null;
+async function loadRB() {
+  try {
+    const q = '?hidebroken=true&order=clickcount&reverse=true&limit=80';
+    const a = await rbFetch('/json/stations/bytag/jazz' + q);
+    rbHost = a.host;
+    const b = await rbFetch('/json/stations/bytag/lounge' + q);
+    const seen = new Set();
+    const list = [...a.data, ...b.data]
+      .filter(s => s.url_resolved?.startsWith('https://'))          // Safari не даст играть http на https-странице
+      .filter(s => ['MP3','AAC','AAC+'].includes(s.codec))
+      .filter(s => !seen.has(s.stationuuid) && seen.add(s.stationuuid))
+      .slice(0, 20)
+      .map(s => ({
+        name: s.name.trim(), meta: `${s.country || '—'} · ${s.codec} ${s.bitrate || '?'}kbps`,
+        src: 'Radio Browser', uuid: s.stationuuid, urls: [s.url_resolved],
+        art: s.favicon?.startsWith('https://') ? s.favicon : '',
+      }));
+    stations = [...SOMA, ...list];
+    log(`RB: ${list.length} https-станций`);
+  } catch (e) { log('RB error: ' + e.message); }
+  render();
+}
+
+function render() {
+  const mk = (i) => {
+    const s = stations[i];
+    const li = document.createElement('li');
+    if (i === current) li.className = 'active';
+    li.innerHTML = `<span class="t"></span><span class="s"></span>`;
+    li.querySelector('.t').textContent = s.name;
+    li.querySelector('.s').textContent = s.meta;
+    li.onclick = () => tune(i);
+    return li;
+  };
+  $('soma').replaceChildren(...stations.map((s,i) => s.src === 'SomaFM' ? mk(i) : null).filter(Boolean));
+  const rb = stations.map((s,i) => s.src !== 'SomaFM' ? mk(i) : null).filter(Boolean);
+  $('rb').replaceChildren(...(rb.length ? rb : [Object.assign(document.createElement('li'), {textContent:'Нет станций (см. лог)'})]));
+}
+
+function updateNow() {
+  const s = stations[current];
+  $('nowName').textContent = s ? s.name : 'Станция не выбрана';
+  $('nowMeta').textContent = s ? `${s.src} · ${s.meta}` : '';
+  if ('mediaSession' in navigator && s) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: s.name, artist: 'Noir Radio', album: s.src,
+      artwork: s.art ? [{ src: s.art, sizes: '120x120', type: 'image/png' }] : [],
+    });
+  }
+}
+
+async function tune(i) {
+  current = (i + stations.length) % stations.length;
+  mirrorIdx = 0;
+  updateNow(); render();
+  await start();
+  const s = stations[current];
+  if (s.uuid && rbHost) fetch(`${rbHost}/json/url/${s.uuid}`).catch(()=>{}); // учёт клика, как просит Radio Browser
+}
+
+async function start() {
+  const s = stations[current];
+  const url = s.urls[mirrorIdx];
+  audio.src = url;
+  setStatus('Подключаюсь…');
+  log(`play ${s.name} → ${url}`);
+  try { await audio.play(); }
+  catch (e) { log(`play() rejected: ${e.name} — ${e.message}`); setStatus('Не удалось запустить: ' + e.name); }
+}
+
+audio.addEventListener('playing', () => { setStatus('Играет'); $('play').textContent = '⏸ Пауза'; setPS('playing'); });
+audio.addEventListener('pause',   () => { setStatus('Пауза');  $('play').textContent = '▶ Играть'; setPS('paused'); });
+audio.addEventListener('waiting', () => setStatus('Буферизация…'));
+audio.addEventListener('stalled', () => log('stalled'));
+audio.addEventListener('error', () => {
+  const s = stations[current];
+  log(`audio error code=${audio.error?.code} на ${s?.urls[mirrorIdx]}`);
+  if (s && mirrorIdx < s.urls.length - 1) { mirrorIdx++; log('пробую зеркало ' + mirrorIdx); start(); }
+  else setStatus('Стрим недоступен — переключи станцию');
+});
+
+function setPS(state) { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state; }
+
+$('play').onclick = () => {
+  if (current < 0) return tune(0);
+  audio.paused ? start() : audio.pause();   // после паузы переподключаемся, чтобы не играть из старого буфера
+};
+$('next').onclick = () => tune(current + 1);
+$('prev').onclick = () => tune(current - 1);
+
+if ('mediaSession' in navigator) {
+  const ms = navigator.mediaSession;
+  ms.setActionHandler('play',  () => start());
+  ms.setActionHandler('pause', () => audio.pause());
+  ms.setActionHandler('nexttrack',     () => tune(current + 1));
+  ms.setActionHandler('previoustrack', () => tune(current - 1));
+  log('Media Session: есть');
+} else log('Media Session: нет');
+
+document.addEventListener('visibilitychange', () => log('visibility: ' + document.visibilityState));
+log(navigator.userAgent);
+render();
+loadRB();
+</script>
+</body>
+</html>
