@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "worlds": [
+    {
+      "id": "noir",
+      "name": "Нуар-джаз",
+      "theme": "noir",
+      "channels": [
+        {
+          "id": "secretagent",
+          "type": "stream",
+          "name": "Secret Agent",
+          "description": "шпионский лаунж, нуар",
+          "source": "SomaFM",
+          "streams": [
+            "https://ice1.somafm.com/secretagent-128-mp3",
+            "https://ice2.somafm.com/secretagent-128-mp3",
+            "https://ice4.somafm.com/secretagent-128-mp3",
+            "https://ice6.somafm.com/secretagent-128-mp3"
+          ]
+        },
+        {
+          "id": "illstreet",
+          "type": "stream",
+          "name": "Illinois Street Lounge",
+          "description": "винтажный лаунж 50–60-х",
+          "source": "SomaFM",
+          "streams": [
+            "https://ice1.somafm.com/illstreet-128-mp3",
+            "https://ice2.somafm.com/illstreet-128-mp3",
+            "https://ice4.somafm.com/illstreet-128-mp3",
+            "https://ice6.somafm.com/illstreet-128-mp3"
+          ]
+        },
+        {
+          "id": "sonicuniverse",
+          "type": "stream",
+          "name": "Sonic Universe",
+          "description": "современный джаз",
+          "source": "SomaFM",
+          "streams": [
+            "https://ice1.somafm.com/sonicuniverse-128-mp3",
+            "https://ice2.somafm.com/sonicuniverse-128-mp3",
+            "https://ice4.somafm.com/sonicuniverse-128-mp3",
+            "https://ice6.somafm.com/sonicuniverse-128-mp3"
+          ]
+        },
+        {
+          "id": "bossa",
+          "type": "stream",
+          "name": "Bossa Beyond",
+          "description": "босса-нова",
+          "source": "SomaFM",
+          "streams": [
+            "https://ice1.somafm.com/bossa-128-mp3",
+            "https://ice2.somafm.com/bossa-128-mp3",
+            "https://ice4.somafm.com/bossa-128-mp3",
+            "https://ice6.somafm.com/bossa-128-mp3"
+          ]
+        },
+        {
+          "id": "noir-generative",
+          "type": "generative",
+          "enabled": false,
+          "name": "Нейронуар",
+          "description": "заглушка: генеративный канал, пока не играет",
+          "generator": { "engine": null, "params": {} }
+        }
+      ]
+    }
+  ]
+}
